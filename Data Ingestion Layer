@@ -1,0 +1,48 @@
+# src/data_ingestion.py
+import json
+from datetime import datetime
+from typing import Dict
+
+class DataIngestion:
+    """
+    Connects to internal position/risk systems and market/data vendors.
+    - Loads trade books (cash, derivatives, securities lending, repo, etc.)
+    - Imports financing terms (repo rates, borrow rates, swap rates).
+    - Gathers market data (prices, yields, short interest, index levels).
+    - Updates credit limits, collateral inventory, funding curves.
+    """
+    def __init__(self, config):
+        self.config = config  # connection info for APIs, MQ endpoints, DBs
+    
+    def ingest_positions(self) -> Dict[str, float]:
+        # Example placeholder: load aggregate position data from JSON/DB
+        try:
+            with open('data/positions.json') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+    
+    def ingest_financing_terms(self) -> Dict[str, float]:
+        try:
+            with open('data/financing_terms.json') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+    
+    def ingest_market_data(self) -> Dict[str, float]:
+        # Simulated fetch from market data API (prices, yields, short interest)
+        return {'equity_prices': {}, 'bond_yields': {}, 'short_interest': {}}
+    
+    def run(self) -> Dict[str, Dict]:
+        data = {}
+        data['positions'] = self.ingest_positions()
+        data['financing'] = self.ingest_financing_terms()
+        data['market_data'] = self.ingest_market_data()
+        data['timestamp'] = datetime.utcnow().isoformat()
+        # In production: publish `data` to event bus/topic and persistent store
+        return data
+
+if __name__ == "__main__":
+    ingestor = DataIngestion(config={})
+    snapshot = ingestor.run()
+    print("Data snapshot:", snapshot)
