@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize
 
-
 class AllocationOptimizer:
 
     def __init__(self, eligible_counterparties: list):
