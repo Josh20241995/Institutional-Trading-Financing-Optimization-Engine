@@ -1,0 +1,47 @@
+# src/financing_optimizer.py
+class FinancingOptimizer:
+    """
+    Identifies cheaper financing across counterparties and terms.
+    Inputs: current financing book, external market rate feeds.
+    Outputs: recommended refinancings with P&L/capital metrics.
+    """
+    def __init__(self, external_market_data: Dict[str,list]):
+        # external_market_data: e.g. {'Asset_X': [{'counterparty':'CptyA','rate':0.02}, ...], ...}
+        self.market_data = external_market_data
+
+    def find_cheaper_financing(self, current_finances: Dict[str,Dict]) -> Dict[str,Dict]:
+        """
+        current_finances: { instrument_id: {'counterparty':..., 'rate':float, 'notional':float} }
+        Returns recommendations: { instrument_id: {'new_cpty':..., 'new_rate':..., 'savings_bps':...} }
+        """
+        recs = {}
+        for instr, info in current_finances.items():
+            curr_rate = info['rate']
+            market = self.market_data.get(instr, [])
+            if not market: 
+                continue
+            best = min(market, key=lambda x: x['rate'])
+            # Threshold to avoid micro-churn
+            if best['rate'] + 1e-4 < curr_rate:  
+                saving = curr_rate - best['rate']
+                recs[instr] = {
+                    'current_rate': curr_rate,
+                    'new_counterparty': best['counterparty'],
+                    'new_rate': best['rate'],
+                    'savings_bps': saving * 1e4
+                }
+        return recs
+
+# Example:
+if __name__ == "__main__":
+    market_feed = {
+        'Asset_X': [{'counterparty':'CptyA','rate':0.020}, {'counterparty':'CptyB','rate':0.018}],
+        'Asset_Y': [{'counterparty':'CptyC','rate':0.015}]
+    }
+    optimizer = FinancingOptimizer(market_feed)
+    current = {
+        'Asset_X': {'counterparty':'CptyZ','rate':0.021,'notional':100e6},
+        'Asset_Y': {'counterparty':'CptyZ','rate':0.016,'notional':50e6}
+    }
+    recs = optimizer.find_cheaper_financing(current)
+    print("Recommendations:", recs)
