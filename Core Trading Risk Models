@@ -1,3 +1,25 @@
+institutional_optimization_engine/
+│
+├── core/
+│   ├── models.py
+│   ├── netting.py
+│   ├── stress.py
+│
+├── counterparty/
+│   ├── counterparty_risk_engine.py
+│   ├── allocation_optimizer.py
+│
+├── capital/
+│   ├── capital_engine.py
+│   ├── capital_optimizer.py
+│
+├── config/
+│   ├── regulatory_config.yaml
+│   ├── counterparty_limits.yaml
+│
+└── main.py
+
+
 # core/models.py
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -45,3 +67,7 @@ class Recommendation(BaseModel):
     expected_rwa_delta: float
     confidence: float  # 0..1
     provenance: Dict
+
+
+
+
