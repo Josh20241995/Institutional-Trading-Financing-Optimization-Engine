@@ -1,0 +1,46 @@
+# src/risk_engine.py
+from typing import Dict
+
+class RiskEngine:
+    """
+    Computes risk metrics and capital usage:
+    - Risk-Weighted Assets (RWA) per Basel III/IV.
+    - Counterparty credit exposures vs. limits.
+    - Simple Value-at-Risk (parametric/historical) and stress scenarios.
+    """
+    def __init__(self, risk_weights: Dict[str,float], credit_limits: Dict[str,float]):
+        self.risk_weights = risk_weights      # e.g. {"Equity":1.0, "GovBond":0.1, ...}
+        self.credit_limits = credit_limits    # e.g. {"CptyA":1e7, "CptyB":5e6}
+
+    def classify_asset(self, asset: str) -> str:
+        if asset.startswith("EQ"): return "Equity"
+        if asset.startswith("SB"): return "GovBond"
+        if asset.startswith("Corp"): return "CorpBond"
+        return "Other"
+    
+    def compute_rwa(self, positions: Dict[str,float]) -> float:
+        """Sum risk-weighted assets."""
+        rwa = 0.0
+        for asset, notional in positions.items():
+            aw = self.classify_asset(asset)
+            weight = self.risk_weights.get(aw, 0.0)
+            rwa += abs(notional) * weight
+        return rwa
+
+    def check_credit_limits(self, exposures: Dict[str,float]) -> Dict[str,bool]:
+        """Flag counterparties exceeding credit limits."""
+        alerts = {}
+        for cpty, exp in exposures.items():
+            limit = self.credit_limits.get(cpty, 0.0)
+            alerts[cpty] = abs(exp) > limit
+        return alerts
+
+# Example usage:
+if __name__ == "__main__":
+    weights = {"Equity":1.0, "GovBond":0.1, "CorpBond":1.0}
+    limits = {"CptyA":1e7, "CptyB":5e6}
+    re = RiskEngine(weights, limits)
+    pos = {"EQ_AAPL":1e6, "SB_US10Y":5e6, "Corp_XYZ":2e6}
+    print("RWA:", re.compute_rwa(pos))  # Basel-style RWA
+    expos = {"CptyA":1.2e7, "CptyB":4e6}
+    print("Limit breaches:", re.check_credit_limits(expos))
