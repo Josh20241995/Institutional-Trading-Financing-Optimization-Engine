@@ -1,3 +1,32 @@
+# services/normalization/normalizer.py
+from core.models import Position
+from datetime import datetime
+from typing import Dict, Any
+import logging
+logger = logging.getLogger(__name__)
+
+# A small canonicalizer example. In production, this would call a canonical ID service, currency conversion, etc.
+def normalize_position(raw: Dict[str, Any]) -> Position:
+    # Validate required fields
+    try:
+        pos = Position(
+            position_id = raw.get("position_id"),
+            account_id = raw.get("account_id"),
+            instrument_id = raw.get("instrument_id") or raw.get("isin") or raw.get("figi"),
+            asset_type = raw.get("asset_type"),
+            quantity = float(raw.get("quantity", 0.0)),
+            notional = float(raw.get("quantity", 0.0)) * float(raw.get("price", 0.0)),
+            side = raw.get("side", "long"),
+            valuation = float(raw.get("price", 0.0)),
+            currency = raw.get("currency", "USD"),
+            timestamp = raw.get("timestamp", datetime.utcnow())
+        )
+    except Exception as exc:
+        logger.exception("Invalid position payload")
+        raise
+    return pos
+
+
 # services/optimizer/financing_optimizer.py
 """
 Financing optimizer: given positions and available financing offers,
