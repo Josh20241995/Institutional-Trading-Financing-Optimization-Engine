@@ -1,0 +1,60 @@
+fastapi==0.95.2
+uvicorn[standard]==0.22.0
+pydantic==1.10.12
+numpy==1.26.2
+pandas==2.2.1
+cvxpy==1.4.1
+scipy==1.11.3
+structlog==23.3.0
+python-json-logger==2.0.4
+pytest==7.4.2
+
+# core/config.py
+from pydantic import BaseSettings, Field
+from typing import List
+
+class KafkaConfig(BaseSettings):
+    bootstrap_servers: str = Field(..., env="KAFKA_BOOTSTRAP")
+    topics: List[str] = Field(default=["positions", "marketdata", "financing"])
+
+class AppConfig(BaseSettings):
+    env: str = Field("dev")
+    run_id: str = Field(..., env="RUN_ID")
+    git_sha: str = Field(..., env="GIT_SHA")
+    seed: int = Field(42)
+    kafka: KafkaConfig = KafkaConfig()
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+cfg = AppConfig()
+
+
+# core/logging_cfg.py
+import logging
+import structlog
+from pythonjsonlogger import jsonlogger
+
+def configure_logging():
+    handler = logging.StreamHandler()
+    formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+
+    structlog.configure(
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer()
+        ]
+    )
+
+configure_logging()
+logger = structlog.get_logger()
+
+
+
