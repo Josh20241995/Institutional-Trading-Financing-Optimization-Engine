@@ -1,37 +1,47 @@
-from dataclasses import dataclass
-from typing import Optional
-import numpy as np
+# core/models.py
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict
+from enum import Enum
+from datetime import datetime
 
+class AssetType(str, Enum):
+    EQUITY = "equity"
+    BOND = "bond"
+    ETF = "etf"
+    FUTURE = "future"
+    SWAP = "swap"
+    FX = "fx"
 
-@dataclass(frozen=True)
-class Trade:
-    trade_id: str
-    counterparty: str
-    netting_set_id: str
-    asset_class: str
+class Position(BaseModel):
+    position_id: str
+    account_id: str
+    instrument_id: str   # FIGI/ISIN
+    asset_type: AssetType
+    quantity: float
     notional: float
-    mtm: float
+    side: str  # "long" or "short"
+    valuation: float  # mark
     currency: str
-    maturity_years: float
-    collateral_posted: float
-    collateral_received: float
-    delta_equivalent: float
-    underlying_asset: Optional[str] = None
+    timestamp: datetime
 
-
-@dataclass(frozen=True)
-class CounterpartyProfile:
+class FinancingOffer(BaseModel):
+    offer_id: str
     counterparty: str
-    credit_limit: float
-    concentration_limit_pct: float
-    wrong_way_risk_factor: float
-    eligible_for_allocation: bool
+    instrument_id: str
+    rate: float  # annualized
+    tenor_days: int
+    collateral_type: Optional[str]
+    haircuts: Optional[float]
+    timestamp: datetime
 
-
-@dataclass(frozen=True)
-class RegulatoryParameters:
-    risk_weights: dict
-    leverage_ratio_min: float
-    nsfr_min: float
-    lcr_min: float
-    tier1_capital: float
+class Recommendation(BaseModel):
+    rec_id: str
+    run_id: str
+    created_at: datetime
+    type: str  # e.g., "refinance", "rebalance", "hedge"
+    description: str
+    actions: List[Dict]  # Execution-level actions
+    expected_pnl: float
+    expected_rwa_delta: float
+    confidence: float  # 0..1
+    provenance: Dict
