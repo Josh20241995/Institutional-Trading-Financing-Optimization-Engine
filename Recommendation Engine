@@ -1,0 +1,40 @@
+# src/recommender.py (conceptual outline)
+class Recommendation:
+    def __init__(self, action, pnl, risk, capital, confidence, deps):
+        self.action = action
+        self.expected_pnl = pnl
+        self.risk_change = risk
+        self.capital_change = capital
+        self.confidence = confidence
+        self.dependencies = deps
+
+class Recommender:
+    def __init__(self, risk_engine, fin_optimizer):
+        self.risk_engine = risk_engine
+        self.fin_optimizer = fin_optimizer
+    
+    def generate(self, data):
+        recs = []
+        # Example: incorporate financing recommendations
+        fin_recs = self.fin_optimizer.find_cheaper_financing(data['financings'])
+        for instr, rec in fin_recs.items():
+            # compute additional metrics:
+            profit = rec['savings_bps'] * data['financings'][instr]['notional'] / 10000
+            # assume small risk and capital change for refinancing
+            recs.append(Recommendation(
+                action=f"Refinance {instr} to {rec['new_counterparty']} at {rec['new_rate']:.2%}",
+                pnl=profit,
+                risk=0.0,
+                capital=0.0,
+                confidence=0.9,
+                deps=[]
+            ))
+        # Additional logic would include credit rebalances, hedge adjustments, etc.
+        # ... sort and filter recommendations ...
+        return recs
+
+if __name__ == "__main__":
+    # Instantiate with mocked subcomponents
+    re = Recommender(RiskEngine({"Equity":1.0,"GovBond":0.1},{"":0}), FinancingOptimizer({}))
+    data = {'financings': {'Asset_X': {'notional':100e6}}}
+    print("Sample Recs:", [r.action for r in re.generate(data)])
