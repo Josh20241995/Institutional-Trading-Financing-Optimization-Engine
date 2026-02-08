@@ -1,0 +1,29 @@
+import numpy as np
+from scipy.optimize import minimize
+
+
+class AllocationOptimizer:
+
+    def __init__(self, eligible_counterparties: list):
+        self.eligible_counterparties = eligible_counterparties
+
+    def optimize_allocation(self, exposure_vector: np.ndarray):
+
+        def objective(x):
+            return np.sum((x / np.sum(x))**2)
+
+        constraints = [
+            {"type": "eq", "fun": lambda x: np.sum(x) - np.sum(exposure_vector)}
+        ]
+
+        bounds = [(0, None) for _ in exposure_vector]
+
+        result = minimize(
+            objective,
+            exposure_vector,
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints
+        )
+
+        return result.x
