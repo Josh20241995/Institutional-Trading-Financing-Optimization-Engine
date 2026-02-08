@@ -1,47 +1,78 @@
-# src/financing_optimizer.py
-class FinancingOptimizer:
-    """
-    Identifies cheaper financing across counterparties and terms.
-    Inputs: current financing book, external market rate feeds.
-    Outputs: recommended refinancings with P&L/capital metrics.
-    """
-    def __init__(self, external_market_data: Dict[str,list]):
-        # external_market_data: e.g. {'Asset_X': [{'counterparty':'CptyA','rate':0.02}, ...], ...}
-        self.market_data = external_market_data
+# services/optimizer/financing_optimizer.py
+"""
+Financing optimizer: given positions and available financing offers,
+allocate financing to positions to minimize financing cost subject to constraints.
+This implementation uses CVXPY (convex relaxation). In production, discrete choices are handled
+by a MILP solver (Gurobi, CPLEX) or hybrid heuristics.
+"""
+from typing import List, Dict, Tuple
+import numpy as np
+import cvxpy as cp
+from core.models import Position, FinancingOffer
+import uuid
+from datetime import datetime
+import logging
+logger = logging.getLogger(__name__)
 
-    def find_cheaper_financing(self, current_finances: Dict[str,Dict]) -> Dict[str,Dict]:
-        """
-        current_finances: { instrument_id: {'counterparty':..., 'rate':float, 'notional':float} }
-        Returns recommendations: { instrument_id: {'new_cpty':..., 'new_rate':..., 'savings_bps':...} }
-        """
-        recs = {}
-        for instr, info in current_finances.items():
-            curr_rate = info['rate']
-            market = self.market_data.get(instr, [])
-            if not market: 
-                continue
-            best = min(market, key=lambda x: x['rate'])
-            # Threshold to avoid micro-churn
-            if best['rate'] + 1e-4 < curr_rate:  
-                saving = curr_rate - best['rate']
-                recs[instr] = {
-                    'current_rate': curr_rate,
-                    'new_counterparty': best['counterparty'],
-                    'new_rate': best['rate'],
-                    'savings_bps': saving * 1e4
-                }
-        return recs
+def build_input_matrix(positions: List[Position], offers: List[FinancingOffer]):
+    # Build per-instrument matching matrix
+    m = len(positions)
+    n = len(offers)
+    notional = np.array([p.notional for p in positions])  # m
+    rates = np.array([o.rate for o in offers])  # n
+    # matching matrix: pos_i can be financed by offer_j if instrument matches or collateral acceptable.
+    M = np.zeros((m, n))
+    for i, p in enumerate(positions):
+        for j, o in enumerate(offers):
+            if p.instrument_id == o.instrument_id or o.collateral_type is None:
+                M[i, j] = 1.0
+    return notional, rates, M
 
-# Example:
-if __name__ == "__main__":
-    market_feed = {
-        'Asset_X': [{'counterparty':'CptyA','rate':0.020}, {'counterparty':'CptyB','rate':0.018}],
-        'Asset_Y': [{'counterparty':'CptyC','rate':0.015}]
+def optimize_financing(positions: List[Position], offers: List[FinancingOffer], max_alloc_per_offer: Dict[str, float]=None) -> Dict:
+    if max_alloc_per_offer is None:
+        max_alloc_per_offer = {o.offer_id: 1e12 for o in offers}
+
+    notional, rates, M = build_input_matrix(positions, offers)
+    m, n = M.shape
+    # decision: x[i,j] fraction (0..1) of position i financed by offer j
+    x = cp.Variable((m, n))
+    # objective: minimize sum_j rate_j * sum_i notional_i * x_ij
+    rate_vec = rates.reshape((1, n))
+    cost = cp.sum(cp.multiply(cp.matmul(notional.reshape((m,1)), rate_vec), x))
+    # constraints:
+    constraints = []
+    # cover all positions: sum_j x_ij == 1 for each i (fully financed)
+    constraints.append(cp.sum(x, axis=1) == 1)
+    # matching constraints: x_ij <= M_ij
+    constraints.append(x <= M)
+    constraints.append(x >= 0)
+    # per-offer capacity: sum_i notional_i * x_ij <= limit_j
+    limit_vec = np.array([max_alloc_per_offer[o.offer_id] for o in offers])
+    constraints.append(cp.matmul(notional.reshape((1,m)), x).reshape((n,)) <= limit_vec)
+    # solve
+    prob = cp.Problem(cp.Minimize(cost), constraints)
+    prob.solve(solver=cp.OSQP, verbose=False)
+    if prob.status not in ["optimal", "optimal_inaccurate"]:
+        logger.error("Solver failed with status %s", prob.status)
+        # fallback: naive allocation
+        return {"status": "failed", "reason": prob.status}
+    x_val = x.value
+    # format result
+    allocations = []
+    for i, p in enumerate(positions):
+        for j, o in enumerate(offers):
+            frac = float(x_val[i, j])
+            if frac > 1e-6:
+                allocations.append({
+                    "position_id": p.position_id,
+                    "offer_id": o.offer_id,
+                    "allocated_notional": float(frac * p.notional),
+                    "rate": o.rate
+                })
+    return {
+        "status": "ok",
+        "run_id": str(uuid.uuid4()),
+        "created_at": datetime.utcnow().isoformat(),
+        "allocations": allocations,
+        "objective_value": float(prob.value)
     }
-    optimizer = FinancingOptimizer(market_feed)
-    current = {
-        'Asset_X': {'counterparty':'CptyZ','rate':0.021,'notional':100e6},
-        'Asset_Y': {'counterparty':'CptyZ','rate':0.016,'notional':50e6}
-    }
-    recs = optimizer.find_cheaper_financing(current)
-    print("Recommendations:", recs)
