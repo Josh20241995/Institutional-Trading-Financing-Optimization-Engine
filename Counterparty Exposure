@@ -2,7 +2,6 @@ import pandas as pd
 from core.netting import NettingEngine
 from core.stress import StressEngine
 
-
 class CounterpartyRiskEngine:
 
     def __init__(self, counterparty_profiles: dict):
