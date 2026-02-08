@@ -1,28 +1,67 @@
-import numpy as np
-from scipy.optimize import minimize
+import pandas as pd
+from core.netting import NettingEngine
+from core.stress import StressEngine
 
-class AllocationOptimizer:
 
-    def __init__(self, eligible_counterparties: list):
-        self.eligible_counterparties = eligible_counterparties
+class CounterpartyRiskEngine:
 
-    def optimize_allocation(self, exposure_vector: np.ndarray):
+    def __init__(self, counterparty_profiles: dict):
+        self.counterparty_profiles = counterparty_profiles
 
-        def objective(x):
-            return np.sum((x / np.sum(x))**2)
+    def evaluate(self, trades_df: pd.DataFrame) -> dict:
 
-        constraints = [
-            {"type": "eq", "fun": lambda x: np.sum(x) - np.sum(exposure_vector)}
-        ]
+        # Apply wrong-way stress
+        wrong_way_factors = {
+            cp: profile.wrong_way_risk_factor
+            for cp, profile in self.counterparty_profiles.items()
+        }
 
-        bounds = [(0, None) for _ in exposure_vector]
-
-        result = minimize(
-            objective,
-            exposure_vector,
-            method="SLSQP",
-            bounds=bounds,
-            constraints=constraints
+        stressed_df = StressEngine.apply_wrong_way_stress(
+            trades_df, wrong_way_factors
         )
 
-        return result.x
+        stressed_df["mtm"] = stressed_df["stressed_mtm"]
+
+        # Netting logic
+        net_df = NettingEngine.compute_net_exposure(stressed_df)
+        cp_exposure = NettingEngine.aggregate_counterparty_exposure(net_df)
+
+        alerts = []
+        recommendations = []
+
+        total_exposure = cp_exposure["net_exposure"].abs().sum()
+
+        for _, row in cp_exposure.iterrows():
+
+            cp = row["counterparty"]
+            exposure = row["net_exposure"]
+            profile = self.counterparty_profiles[cp]
+
+            concentration = abs(exposure) / total_exposure
+
+            if abs(exposure) > profile.credit_limit:
+                alerts.append({
+                    "counterparty": cp,
+                    "type": "LIMIT_BREACH",
+                    "exposure": exposure
+                })
+
+                recommendations.append({
+                    "counterparty": cp,
+                    "action": "Reduce exposure via trade compression or reassignment",
+                    "priority": "HIGH"
+                })
+
+            if concentration > profile.concentration_limit_pct:
+                recommendations.append({
+                    "counterparty": cp,
+                    "action": "Reallocate new trades to alternate counterparties",
+                    "priority": "MEDIUM"
+                })
+
+        return {
+            "exposure_table": cp_exposure,
+            "alerts": alerts,
+            "recommendations": recommendations
+        }
+
