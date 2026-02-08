@@ -1,0 +1,66 @@
+import pandas as pd
+from core.netting import NettingEngine
+from core.stress import StressEngine
+
+
+class CounterpartyRiskEngine:
+
+    def __init__(self, counterparty_profiles: dict):
+        self.counterparty_profiles = counterparty_profiles
+
+    def evaluate(self, trades_df: pd.DataFrame) -> dict:
+
+        # Apply wrong-way stress
+        wrong_way_factors = {
+            cp: profile.wrong_way_risk_factor
+            for cp, profile in self.counterparty_profiles.items()
+        }
+
+        stressed_df = StressEngine.apply_wrong_way_stress(
+            trades_df, wrong_way_factors
+        )
+
+        stressed_df["mtm"] = stressed_df["stressed_mtm"]
+
+        # Netting logic
+        net_df = NettingEngine.compute_net_exposure(stressed_df)
+        cp_exposure = NettingEngine.aggregate_counterparty_exposure(net_df)
+
+        alerts = []
+        recommendations = []
+
+        total_exposure = cp_exposure["net_exposure"].abs().sum()
+
+        for _, row in cp_exposure.iterrows():
+
+            cp = row["counterparty"]
+            exposure = row["net_exposure"]
+            profile = self.counterparty_profiles[cp]
+
+            concentration = abs(exposure) / total_exposure
+
+            if abs(exposure) > profile.credit_limit:
+                alerts.append({
+                    "counterparty": cp,
+                    "type": "LIMIT_BREACH",
+                    "exposure": exposure
+                })
+
+                recommendations.append({
+                    "counterparty": cp,
+                    "action": "Reduce exposure via trade compression or reassignment",
+                    "priority": "HIGH"
+                })
+
+            if concentration > profile.concentration_limit_pct:
+                recommendations.append({
+                    "counterparty": cp,
+                    "action": "Reallocate new trades to alternate counterparties",
+                    "priority": "MEDIUM"
+                })
+
+        return {
+            "exposure_table": cp_exposure,
+            "alerts": alerts,
+            "recommendations": recommendations
+        }
