@@ -1,0 +1,141 @@
+# src/risk_engine.py
+from typing import Dict
+
+class RiskEngine:
+    """
+    Computes risk metrics and capital usage:
+    - Risk-Weighted Assets (RWA) per Basel III/IV.
+    - Counterparty credit exposures vs. limits.
+    - Simple Value-at-Risk (parametric/historical) and stress scenarios.
+    """
+    def __init__(self, risk_weights: Dict[str,float], credit_limits: Dict[str,float]):
+        self.risk_weights = risk_weights      # e.g. {"Equity":1.0, "GovBond":0.1, ...}
+        self.credit_limits = credit_limits    # e.g. {"CptyA":1e7, "CptyB":5e6}
+
+    def classify_asset(self, asset: str) -> str:
+        if asset.startswith("EQ"): return "Equity"
+        if asset.startswith("SB"): return "GovBond"
+        if asset.startswith("Corp"): return "CorpBond"
+        return "Other"
+    
+    def compute_rwa(self, positions: Dict[str,float]) -> float:
+        """Sum risk-weighted assets."""
+        rwa = 0.0
+        for asset, notional in positions.items():
+            aw = self.classify_asset(asset)
+            weight = self.risk_weights.get(aw, 0.0)
+            rwa += abs(notional) * weight
+        return rwa
+
+    def check_credit_limits(self, exposures: Dict[str,float]) -> Dict[str,bool]:
+        """Flag counterparties exceeding credit limits."""
+        alerts = {}
+        for cpty, exp in exposures.items():
+            limit = self.credit_limits.get(cpty, 0.0)
+            alerts[cpty] = abs(exp) > limit
+        return alerts
+
+# Example usage:
+if __name__ == "__main__":
+    weights = {"Equity":1.0, "GovBond":0.1, "CorpBond":1.0}
+    limits = {"CptyA":1e7, "CptyB":5e6}
+    re = RiskEngine(weights, limits)
+    pos = {"EQ_AAPL":1e6, "SB_US10Y":5e6, "Corp_XYZ":2e6}
+    print("RWA:", re.compute_rwa(pos))  # Basel-style RWA
+    expos = {"CptyA":1.2e7, "CptyB":4e6}
+    print("Limit breaches:", re.check_credit_limits(expos))
+
+
+
+
+
+
+import pandas as pd
+
+
+class CapitalEngine:
+
+    def __init__(self, regulatory_params):
+        self.reg_params = regulatory_params
+
+    def compute_rwa(self, trades_df: pd.DataFrame) -> float:
+
+        rwa = 0.0
+
+        for _, row in trades_df.iterrows():
+            weight = self.reg_params.risk_weights.get(row["asset_class"], 1.0)
+            rwa += abs(row["notional"]) * weight
+
+        return rwa
+
+    def compute_leverage_ratio(self, total_exposure: float) -> float:
+        return self.reg_params.tier1_capital / total_exposure
+
+    def compute_nsfr(self, available_stable_funding: float,
+                     required_stable_funding: float) -> float:
+        return available_stable_funding / required_stable_funding
+
+    def compute_lcr(self, hqla: float, net_cash_outflow: float) -> float:
+        return hqla / net_cash_outflow
+
+
+
+
+
+import pandas as pd
+
+class CapitalOptimizer:
+
+    def __init__(self, regulatory_params):
+        self.reg_params = regulatory_params
+
+    def identify_capital_drag(self, trades_df: pd.DataFrame):
+
+        trades_df = trades_df.copy()
+
+        trades_df["risk_weight"] = trades_df["asset_class"].map(
+            self.reg_params.risk_weights
+        ).fillna(1.0)
+
+        trades_df["capital_usage"] = (
+            trades_df["notional"].abs()
+            * trades_df["risk_weight"]
+        )
+
+        high_drag = trades_df.sort_values(
+            by="capital_usage",
+            ascending=False
+        ).head(20)
+
+        return high_drag
+
+    def suggest_structural_changes(self, trades_df: pd.DataFrame):
+
+        recommendations = []
+
+        for _, row in trades_df.iterrows():
+
+            if row["asset_class"] == "Equity_Cash":
+
+                rwa_original = row["notional"]
+                rwa_swap = row["notional"] * 0.5
+
+                if rwa_swap < rwa_original:
+
+                    recommendations.append({
+                        "trade_id": row["trade_id"],
+                        "suggestion": "Convert to Total Return Swap",
+                        "rwa_reduction": rwa_original - rwa_swap
+                    })
+
+            if row["asset_class"] == "Long_Duration_Bond":
+
+                recommendations.append({
+                    "trade_id": row["trade_id"],
+                    "suggestion": "Finance via secured repo to improve NSFR",
+                    "impact": "Improves stable funding profile"
+                })
+
+        return recommendations
+
+
