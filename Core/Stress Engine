@@ -1,0 +1,21 @@
+import pandas as pd
+import numpy as np
+
+
+class StressEngine:
+
+    @staticmethod
+    def apply_wrong_way_stress(
+        trades_df: pd.DataFrame,
+        wrong_way_factors: dict
+    ) -> pd.DataFrame:
+
+        trades_df = trades_df.copy()
+
+        trades_df["stress_multiplier"] = trades_df["counterparty"].map(
+            wrong_way_factors
+        ).fillna(1.0)
+
+        trades_df["stressed_mtm"] = trades_df["mtm"] * trades_df["stress_multiplier"]
+
+        return trades_df
