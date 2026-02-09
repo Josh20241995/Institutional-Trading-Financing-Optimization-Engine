@@ -9,6 +9,46 @@ structlog==23.3.0
 python-json-logger==2.0.4
 pytest==7.4.2
 
+from dataclasses import dataclass
+from typing import Optional
+import numpy as np
+
+
+@dataclass(frozen=True)
+class Trade:
+    trade_id: str
+    counterparty: str
+    netting_set_id: str
+    asset_class: str
+    notional: float
+    mtm: float
+    currency: str
+    maturity_years: float
+    collateral_posted: float
+    collateral_received: float
+    delta_equivalent: float
+    underlying_asset: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CounterpartyProfile:
+    counterparty: str
+    credit_limit: float
+    concentration_limit_pct: float
+    wrong_way_risk_factor: float
+    eligible_for_allocation: bool
+
+
+@dataclass(frozen=True)
+class RegulatoryParameters:
+    risk_weights: dict
+    leverage_ratio_min: float
+    nsfr_min: float
+    lcr_min: float
+    tier1_capital: float
+
+
+
 # core/config.py
 from pydantic import BaseSettings, Field
 from typing import List
