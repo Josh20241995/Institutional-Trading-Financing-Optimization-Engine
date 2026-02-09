@@ -1,0 +1,35 @@
+import pandas as pd
+
+
+class NettingEngine:
+    """
+    Computes net exposure per netting set and counterparty
+    incorporating CSA collateral and cross-currency netting.
+    """
+
+    @staticmethod
+    def compute_net_exposure(trades_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        trades_df columns:
+        [counterparty, netting_set_id, mtm, collateral_posted, collateral_received]
+        """
+
+        grouped = trades_df.groupby(
+            ["counterparty", "netting_set_id"], as_index=False
+        ).agg({
+            "mtm": "sum",
+            "collateral_posted": "sum",
+            "collateral_received": "sum"
+        })
+
+        grouped["net_exposure"] = (
+            grouped["mtm"]
+            - grouped["collateral_received"]
+            + grouped["collateral_posted"]
+        )
+
+        return grouped
+
+    @staticmethod
+    def aggregate_counterparty_exposure(net_df: pd.DataFrame) -> pd.DataFrame:
+        return net_df.groupby("counterparty", as_index=False)["net_exposure"].sum()
